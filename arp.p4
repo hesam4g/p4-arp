@@ -154,9 +154,6 @@ control MyIngress(inout headers hdr,
 		hdr.ethernet.srcAddr = target_mac;
 		hdr.ethernet.dstAddr = hdr.arp.tha;
 
-		hdr.ipv4.dstAddr = hdr.ipv4.srcAddr;
-		hdr.ipv4.srcAddr = target_ip;
-
 		standard_metadata.egress_spec =  standard_metadata.ingress_port;
 	}
 
@@ -176,14 +173,15 @@ control MyIngress(inout headers hdr,
     apply {
 		// HESAM CODE
 		// HERE I CHECK WHETHER AN ARP REQUEST HAS ARRIVED
-
 		if (hdr.arp.isValid()) {
 			arp_table.apply();
 		}
 		// END
-        if (hdr.ipv4.isValid()) {
-        	ipv4_lpm.apply();
-    	}
+        else{
+            if (hdr.ipv4.isValid()) {
+                ipv4_lpm.apply();
+            }
+        }
     }
 }
 

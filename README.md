@@ -1,45 +1,140 @@
-# Implementing Basic Forwarding
+# Implementing ARP on data plane
 
 ## Introduction
 
-The objective of this exercise is to write a P4 program that
-implements basic forwarding. To keep things simple, we will just
-implement forwarding for IPv4.
+The objective of this program is to interpret ARP requests on data plane. The functionality is implemented in `arp.p4` file.
 
-With IPv4 forwarding, the switch must perform the following actions
-for every packet: (i) update the source and destination MAC addresses,
-(ii) decrement the time-to-live (TTL) in the IP header, and (iii)
-forward the packet out the appropriate port.
+> **Note:** I have used some code from p4lang repository ([tutorials/exercises/basic/](https://github.com/p4lang/tutorials/tree/master/exercises/basic)) for implementation of the topology and running the `mininet`. I have put adequate comments for the lines of code I wrote.
 
-Your switch will have a single table, which the control plane will
-populate with static rules. Each rule will map an IP address to the
-MAC address and output port for the next hop. We have already defined
-the control plane rules, so you only need to implement the data plane
-logic of your P4 program.
 
-We will use the following topology for this exercise. It is a single
-pod of a fat-tree topology and henceforth referred to as pod-topo:
-![pod-topo](./pod-topo/pod-topo.png)
 
-Our P4 program will be written for the V1Model architecture implemented
-on P4.org's bmv2 software switch. The architecture file for the V1Model
-can be found at: /usr/local/share/p4c/p4include/v1model.p4. This file
-desribes the interfaces of the P4 programmable elements in the architecture,
-the supported externs, as well as the architecture's standard metadata
-fields. We encourage you to take a look at it.
+## Network Topology
+The topology is defined in `pod-topo/topology.json`. There are 4 hosts connected to a switch. The first host is connected to `p1` of the switch, the second host to `p2`, and so on. The following table shows the IP and MAC addresses assigned to each host.
 
-> **Spoiler alert:** There is a reference solution in the `solution`
-> sub-directory. Feel free to compare your implementation to the
-> reference.
+| Host            | IP Address      | MAC Address     |
+| --------------  | -------------   | -------------   | 
+| Host 1          | 10.0.0.1        | 08:00:00:00:00:11|
+| Host 2          | 10.0.0.2        | 08:00:00:00:00:22|
+| Host 3          | 10.0.0.3        | 08:00:00:00:00:33|
+| Host 4          | 10.0.0.4        | 08:00:00:00:00:44|
 
-## Step 1: Run the (incomplete) starter code
 
-The directory with this README also contains a skeleton P4 program,
-`basic.p4`, which initially drops all packets. Your job will be to
-extend this skeleton program to properly forward IPv4 packets.
+The tables in the data plane are filled using the `pod-topo/s1-runtime.json`. 
 
-Before that, let's compile the incomplete `basic.p4` and bring
-up a switch in Mininet to test its behavior.
+
+## ARP Header
+
+The ARP header is defined as follow in the code.
+I used [this](https://forum.p4.org/t/how-define-the-arp-header-in-the-p4-program/584/3) reference for the defination and parsing.
+```
+header arp_t {
+    bit<16> hrd; // Hardware Type
+    bit<16> pro; // Protocol Type
+    bit<8> hln; // Hardware Address Length
+    bit<8> pln; // Protocol Address Length
+    bit<16> op;  // Opcode
+    macAddr_t sha; // Sender Hardware Address
+    ip4Addr_t spa; // Sender Protocol Address
+    macAddr_t tha; // Target Hardware Address
+    ip4Addr_t tpa; // Target Protocol Address
+}
+```
+
+Moreover, I put the ARP header in the global header struct, alongside ethernet and ipv4:
+```
+struct headers {
+   ethernet_t     ethernet;
+   ipv4_t         ipv4;
+   arp_t          arp;
+}
+```
+
+Also, after parsing ethernet header, if ``EtherType`` indicates that the received packets is an ARP request (`EtherType: 0x806`), I parse the header as follow.
+```
+    state parse_arp {
+        packet.extract(hdr.arp);
+        transition accept;
+    }
+```
+
+
+
+# An example of ARP request and reply in traditional networks.
+
+For example, assume `Host 1` needs `Host 2`'s MAC address. In this case the sender is `Host 1`, and the target is `Host 2`.
+So, `Host 1` broadcasts an ARP requests with following values:
+```
+op    = 1                     // Opcode for the ARP requests
+sha   = 08:00:00:00:00:11     // Host 1 knows its mac address
+spa   = 10.0.0.1              // Host 1 knows its ip address
+tha   = 00:00:00:00:00:00     // Host 1 is looking for this one
+tpa   = 10.0.0.2              // Host 1 specifies the target's IP
+```
+
+In a traditional network, the switch broadcasts the ARP requests. So, `Host 2` receives the ARP requests sent by `Host 1`, and detects that `Host 1` is asking for its MAC. Then, `Host 2` gets back to `Host 1` by sending an ARP reply to `Host 1`. The reply's header are filled as follow:
+```
+op    = 2                     // Opcode for the ARP replies
+sha   = 08:00:00:00:00:22     // Host 2 knows its mac address
+spa   = 10.0.0.2              // Host 2 knows its ip address
+tha   = 08:00:00:00:00:11     // Host 2 gets Host 1's mac 
+tpa   = 10.0.0.1              // Host 2 specifies the target's IP
+```
+
+Finally, `Host 1` receives the ARP reply, and by checking `sha` in ARP header, finds `Host 2`'s MAC.
+
+
+# The overview of ARP implementation
+I mentioned how ARP header is defined before.
+
+Here, I explain how the functionality works alongside routing in the switch.
+
+First of all, there are two tables in the `MyIngress`. One table for ARP handling, named `arp_table`. Another table, `ipv4_lpm`, is used for routing.
+
+The program checks to see if ARP or IPV4 headers are valid. Then applies the correspond match+action table. 
+
+Here, I only explain the first table. The latter table has only a simple action which transmits packets to proper PORT according to the destination address.
+
+If the ARP header is valid, it means a host is looking for a MAC address.
+
+If `hdr.arp.tpa` matches to an entry in `arp_table`, it means the required information is available for the host having `hdr.arp.tpa` IP address.
+
+The action to response is `arp_process` which works as follow:
+```
+action arp_process (ip4Addr_t target_ip, macAddr_t target_mac)
+{
+   // Changing opcode to reply's opcode
+   hdr.arp.op = 2;
+
+   // Setting target's IP and MAC using the received information
+   hdr.arp.tha = hdr.arp.sha;
+   hdr.arp.tpa = hdr.arp.spa;
+
+   // Filling the required information using the
+   // data in the table
+   hdr.arp.sha = target_mac;
+   hdr.arp.spa = target_ip;
+
+   // It is not mandatory, however, it would be better
+   // to swap src and dst MACs 
+   hdr.ethernet.srcAddr = target_mac;
+   hdr.ethernet.dstAddr = hdr.arp.tha;
+
+   // Sending back the reply to the same port.
+   standard_metadata.egress_spec =  standard_metadata.ingress_port;
+}
+```
+
+# Running the code
+
+>**Note:** As I mentioned before, I am using some utility code from P4lang repo.
+
+To run the code, navigate to project and run
+```bash
+make
+```
+
+It will create two directories, "build" and "log"
+
 
 1. In your shell, run:
    ```bash
