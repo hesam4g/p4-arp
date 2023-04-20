@@ -175,7 +175,7 @@ ping 10.0.0.2 -c 1
 
 The `tcpdump` on  bottom-left shows that an ARP request is sent asking who has 10.0.0.2 MAC address. After that, the appropriate reply is captured. Next, the ICMP request/reply are sent. It shows that ARP managed somewhere. 
 
-But, `Host 1`s request is not received in bottom-right terminal. 
+But, `Host 1`'s request is not received in bottom-right terminal. So, `Host 2` didn't respond to the ARP.
 
 (Another ARP request is captured in the other terminal asking for 10.0.0.1. That happens when `Host 2` wants to get back to ping and needs `Host 1`'s MAC!)
 
