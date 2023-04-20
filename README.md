@@ -51,10 +51,10 @@ struct headers {
 
 Also, after parsing ethernet header, if ``EtherType`` indicates that the received packets is an ARP request (`EtherType: 0x806`), I parse the header as follow.
 ```
-    state parse_arp {
-        packet.extract(hdr.arp);
-        transition accept;
-    }
+state parse_arp {
+    packet.extract(hdr.arp);
+    transition accept;
+}
 ```
 
 
@@ -133,7 +133,61 @@ To run the code, navigate to project and run
 make
 ```
 
-It will create two directories, "build" and "log"
+It will lunch Mininet automatically.
+
+![An example](./screenshot/1.png)
+
+
+
+The above picture shows that 4 entries are added into the arp_table.
+For instance, if `hdr.arp.tpa=10.0.0.1`, the action `arp_process` is called, and the required fields are passed to it for processing.
+
+
+
+Also, the script creates two directories, "build" and "logs". We can check the switch logs by
+```bash
+tail -f ./logs/s1.log
+```
+![output](./screenshot/2.png)
+
+
+
+
+# Checking the code
+I opened two terminal assigned to `Host 1`'s netspace and one terminal assigned to `Host 2`'s by running the following line in Minineet.
+```
+xterm h1 h1 h2
+```
+
+In one terminal of `Host 1`, I ran `tcpdump` (the bottom-left terminal in the picture):
+```bash
+tcpdump -i eth0 -vvv
+```
+
+Using the same command, I ran `tcpdump` on `Host 2` (the bottom-right terminal in the picture):
+
+
+In the another terminal of `Host 1`, I sent 1 ping to `Host 2`:
+```bash
+ping 10.0.0.2 -c 1
+```
+![output](./screenshot/5.png)
+
+
+The `tcpdump` on  bottom-left shows that an ARP request is sent asking who has 10.0.0.2 MAC address. After that, the appropriate reply is captured. Next, the ICMP request/reply are sent. It shows that ARP managed somewhere. 
+
+But, `Host 1`s request is not received in bottom-right terminal. So, where the request is handled?
+
+(Another ARP request is captured in the other terminal asking for 10.0.0.1. That happens when `Host 2` wants to get back to ping and needs `Host 1`'s MAC!)
+
+
+The table below shows the operations that switch does for handling arp.
+
+![output](./screenshot/4.png)
+
+
+
+
 
 
 1. In your shell, run:
