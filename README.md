@@ -19,8 +19,6 @@ The topology is defined in `pod-topo/topology.json`. There are 4 hosts connected
 | Host 4          | 10.0.0.4        | 08:00:00:00:00:44|
 
 
-The tables in the data plane are filled using the `pod-topo/s1-runtime.json`. 
-
 
 ## ARP Header
 
@@ -140,8 +138,9 @@ It will lunch Mininet automatically.
 
 
 The above picture shows that 4 entries are added into the arp_table.
-For instance, if `hdr.arp.tpa=10.0.0.1`, the action `arp_process` is called, and the required fields are passed to it for processing.
+For instance, if `hdr.arp.tpa=10.0.0.1`, the action `arp_process` is called, and the required fields are passed to it for processing. 
 
+The entries for the tables in the data plane are provided in `pod-topo/s1-runtime.json`. 
 
 
 Also, the script creates two directories, "build" and "logs". We can check the switch logs by
@@ -153,7 +152,7 @@ tail -f ./logs/s1.log
 
 
 
-# Checking the code
+# Running the first example
 I opened two terminal assigned to `Host 1`'s netspace and one terminal assigned to `Host 2`'s by running the following line in Minineet.
 ```
 xterm h1 h1 h2
@@ -176,153 +175,19 @@ ping 10.0.0.2 -c 1
 
 The `tcpdump` on  bottom-left shows that an ARP request is sent asking who has 10.0.0.2 MAC address. After that, the appropriate reply is captured. Next, the ICMP request/reply are sent. It shows that ARP managed somewhere. 
 
-But, `Host 1`s request is not received in bottom-right terminal. So, where the request is handled?
+But, `Host 1`s request is not received in bottom-right terminal. 
 
 (Another ARP request is captured in the other terminal asking for 10.0.0.1. That happens when `Host 2` wants to get back to ping and needs `Host 1`'s MAC!)
 
+**So, where the request is handled?**
 
-The table below shows the operations that switch does for handling arp.
+The picture below shows the the switch does the operations for handling arp.
 
 ![output](./screenshot/4.png)
 
 
+# Running the second example
 
+For the second example, I check the connectivity of `Host 3` and `Host 4` by a simple `iperf` test.
 
-
-
-1. In your shell, run:
-   ```bash
-   make run
-   ```
-   This will:
-   * compile `basic.p4`, and
-   * start the pod-topo in Mininet and configure all switches with
-   the appropriate P4 program + table entries, and
-   * configure all hosts with the commands listed in
-   [pod-topo/topology.json](./pod-topo/topology.json)
-
-2. You should now see a Mininet command prompt. Try to ping between
-   hosts in the topology:
-   ```bash
-   mininet> h1 ping h2
-   mininet> pingall
-   ```
-3. Type `exit` to leave each xterm and the Mininet command line.
-   Then, to stop mininet:
-   ```bash
-   make stop
-   ```
-   And to delete all pcaps, build files, and logs:
-   ```bash
-   make clean
-   ```
-
-The ping failed because each switch is programmed
-according to `basic.p4`, which drops all packets on arrival.
-Your job is to extend this file so it forwards packets.
-
-### A note about the control plane
-
-A P4 program defines a packet-processing pipeline, but the rules
-within each table are inserted by the control plane. When a rule
-matches a packet, its action is invoked with parameters supplied by
-the control plane as part of the rule.
-
-In this exercise, we have already implemented the control plane
-logic for you. As part of bringing up the Mininet instance, the
-`make run` command will install packet-processing rules in the tables of
-each switch. These are defined in the `sX-runtime.json` files, where
-`X` corresponds to the switch number.
-
-**Important:** We use P4Runtime to install the control plane rules. The
-content of files `sX-runtime.json` refer to specific names of tables, keys, and
-actions, as defined in the P4Info file produced by the compiler (look for the
-file `build/basic.p4.p4info.txt` after executing `make run`). Any changes in the P4
-program that add or rename tables, keys, or actions will need to be reflected in
-these `sX-runtime.json` files.
-
-## Step 2: Implement L3 forwarding
-
-The `basic.p4` file contains a skeleton P4 program with key pieces of
-logic replaced by `TODO` comments. Your implementation should follow
-the structure given in this file---replace each `TODO` with logic
-implementing the missing piece.
-
-A complete `basic.p4` will contain the following components:
-
-1. Header type definitions for Ethernet (`ethernet_t`) and IPv4 (`ipv4_t`).
-2. **TODO:** Parsers for Ethernet and IPv4 that populate `ethernet_t` and `ipv4_t` fields.
-3. An action to drop a packet, using `mark_to_drop()`.
-4. **TODO:** An action (called `ipv4_forward`) that:
-	1. Sets the egress port for the next hop.
-	2. Updates the ethernet destination address with the address of the next hop.
-	3. Updates the ethernet source address with the address of the switch.
-	4. Decrements the TTL.
-5. **TODO:** A control that:
-    1. Defines a table that will read an IPv4 destination address, and
-       invoke either `drop` or `ipv4_forward`.
-    2. An `apply` block that applies the table.
-6. **TODO:** A deparser that selects the order
-    in which fields inserted into the outgoing packet.
-7. A `package` instantiation supplied with the parser, control, and deparser.
-    > In general, a package also requires instances of checksum verification
-    > and recomputation controls. These are not necessary for this tutorial
-    > and are replaced with instantiations of empty controls.
-
-## Step 3: Run your solution
-
-Follow the instructions from Step 1. This time, you should be able to
-sucessfully ping between any two hosts in the topology.
-
-### Food for thought
-
-The "test suite" for your solution---sending pings between hosts in the
-topology---is not very robust. What else should you test to be confident
-that you implementation is correct?
-
-> Although the Python `scapy` library is outside the scope of this tutorial,
-> it can be used to generate packets for testing. The `send.py` file shows how
-> to use it.
-
-Other questions to consider:
- - How would you enhance your program to respond to ARP requests?
- - How would you enhance your program to support traceroute?
- - How would you enhance your program to support next hops?
- - Is this program enough to replace a router?  What's missing?
-
-### Troubleshooting
-
-There are several problems that might manifest as you develop your program:
-
-1. `basic.p4` might fail to compile. In this case, `make run` will
-report the error emitted from the compiler and halt.
-
-2. `basic.p4` might compile but fail to support the control plane
-rules in the `s1-runtime.json` through `s3-runtime.json` files that
-`make run` tries to install using P4Runtime. In this case, `make run` will
-report errors if control plane rules cannot be installed. Use these error
-messages to fix your `basic.p4` implementation.
-
-3. `basic.p4` might compile, and the control plane rules might be
-installed, but the switch might not process packets in the desired
-way. The `logs/sX.log` files contain detailed logs
-that describing how each switch processes each packet. The output is
-detailed and can help pinpoint logic errors in your implementation.
-
-#### Cleaning up Mininet
-
-In the latter two cases above, `make run` may leave a Mininet instance
-running in the background. Use the following command to clean up
-these instances:
-
-```bash
-make stop
-```
-
-## Relevant Documentation
-
-The documentation for P4_16 and P4Runtime is available [here](https://p4.org/specs/)
-
-All excercises in this repository use the v1model architecture, the documentation for which is available at:
-1. The BMv2 Simple Switch target document accessible [here](https://github.com/p4lang/behavioral-model/blob/master/docs/simple_switch.md) talks mainly about the v1model architecture.
-2. The include file `v1model.p4` has extensive comments and can be accessed [here](https://github.com/p4lang/p4c/blob/master/p4include/v1model.p4).
+![output](./screenshot/6.png)
