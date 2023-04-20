@@ -84,9 +84,9 @@ Finally, `Host 1` receives the ARP reply, and by checking `sha` in ARP header, f
 # The overview of ARP implementation
 I mentioned how ARP header is defined before.
 
-Here, I explain how the functionality works alongside routing in the switch.
+Here, I explain how the ARP works alongside routing in the switch.
 
-First of all, there are two tables in the `MyIngress`. One table for ARP handling, named `arp_table`. Another table, `ipv4_lpm`, is used for routing.
+First of all, there are two tables in `MyIngress`. One table for ARP handling, named `arp_table`. Another table, `ipv4_lpm`, is used for routing.
 
 The program checks to see if ARP or IPV4 headers are valid. Then applies the correspond match+action table. 
 
@@ -96,7 +96,7 @@ If the ARP header is valid, it means a host is looking for a MAC address.
 
 If `hdr.arp.tpa` matches to an entry in `arp_table`, it means the required information is available for the host having `hdr.arp.tpa` IP address.
 
-The action to response is `arp_process` which works as follow:
+The action `arp_process` handles the ARP requests and set reply's header, and send the packet back to the port it came from:
 ```
 action arp_process (ip4Addr_t target_ip, macAddr_t target_mac)
 {
@@ -153,7 +153,7 @@ tail -f ./logs/s1.log
 
 
 # Running the first example
-I opened two terminal assigned to `Host 1`'s netspace and one terminal assigned to `Host 2`'s by running the following line in Minineet.
+I opened two terminal assigned to `Host 1`'s netspace and one terminal assigned to `Host 2`'s by running the following line in Mininet.
 ```
 xterm h1 h1 h2
 ```
@@ -191,3 +191,9 @@ The picture below shows the the switch does the operations for handling arp.
 For the second example, I check the connectivity of `Host 3` and `Host 4` by a simple `iperf` test.
 
 ![output](./screenshot/6.png)
+
+
+
+# Contact
+
+Feel free to contact me if you need more information

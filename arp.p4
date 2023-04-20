@@ -137,25 +137,33 @@ control MyIngress(inout headers hdr,
         default_action = drop();
     }
 
-
+    // Hesam CODE
 	action arp_drop () {
 		mark_to_drop(standard_metadata);
 	}
-	action arp_process (ip4Addr_t target_ip, macAddr_t target_mac)
-	{
-		hdr.arp.op = 2;
-		
-		hdr.arp.tha = hdr.arp.sha;
-		hdr.arp.tpa = hdr.arp.spa;
+    // The main operations required for ARP
+    action arp_process (ip4Addr_t target_ip, macAddr_t target_mac)
+    {
+    // Changing opcode to reply's opcode
+    hdr.arp.op = 2;
 
-		hdr.arp.sha = target_mac;
-		hdr.arp.spa = target_ip;
+    // Setting target's IP and MAC using the received information
+    hdr.arp.tha = hdr.arp.sha;
+    hdr.arp.tpa = hdr.arp.spa;
 
-		hdr.ethernet.srcAddr = target_mac;
-		hdr.ethernet.dstAddr = hdr.arp.tha;
+    // Filling the required information using the
+    // data in the table
+    hdr.arp.sha = target_mac;
+    hdr.arp.spa = target_ip;
 
-		standard_metadata.egress_spec =  standard_metadata.ingress_port;
-	}
+    // It is not mandatory, however, it would be better
+    // to swap src and dst MACs 
+    hdr.ethernet.srcAddr = target_mac;
+    hdr.ethernet.dstAddr = hdr.arp.tha;
+
+    // Sending back the reply to the same port.
+    standard_metadata.egress_spec =  standard_metadata.ingress_port;
+    }
 
 	table arp_table {
 		key = {
@@ -169,7 +177,7 @@ control MyIngress(inout headers hdr,
 		size = 1024;
 		default_action = arp_drop();
 	}
-
+    // end
     apply {
 		// HESAM CODE
 		// HERE I CHECK WHETHER AN ARP REQUEST HAS ARRIVED
